@@ -1,5 +1,7 @@
 *.vts
 *.vtu
+*.pdf
+*.png, *.jpg, *.jpeg, *.gif, *.bmp, *.tif, *.tiff
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

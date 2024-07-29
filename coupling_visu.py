@@ -58,7 +58,7 @@ def create_dictplanet(folder):
             planet_data[planet_name] = position_data.set_index('date').to_dict('index')
     return planet_data
 
-def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle, save=False, variable='Vr'):
+def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, angle, save=False, variable='Vr'):
     mesh = pv.read(filevtu)
     radii = np.sqrt(mesh.points[:, 0] ** 2 + mesh.points[:, 1] ** 2 + mesh.points[:, 2] ** 2)
     mask = radii <= 20.5
@@ -188,7 +188,7 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, ecart, a
     else:
         plotter = pv.Plotter(window_size=[1920, 1080])
 
-    plotter.add_text(f"{target_date.strftime('%Y-%m-%d %H:%M:%S')}\n {ecart:.1f}", position='upper_right', color='black',
+    plotter.add_text(f"{target_date.strftime('%Y-%m-%d %H:%M:%S')}\n {diff:.1f}", position='upper_right', color='black',
                      font_size=13)
 
     w_S = 2.6 * 10 ** (-6)
@@ -362,8 +362,8 @@ if __name__ == "__main__":
     w_S =  2.66622373e-6
     start_date = pd.to_datetime("2019-07-02T12:04:37")
     interval_hours = 0.402 * 20 * 0.005
-    date_list = [start_date + pd.to_timedelta(interval_hours * i, unit='h') for i in range(600)]
-
+    # date_list = [start_date + pd.to_timedelta(interval_hours * i, unit='h') for i in range(600)]
+    date_list = [start_date + pd.to_timedelta(interval_hours * 0, unit='h'), start_date + pd.to_timedelta(interval_hours * 118, unit='h'), start_date + pd.to_timedelta(interval_hours * 186, unit='h')]
 
     dsvdirectory='dsv/'
 
@@ -383,11 +383,12 @@ if __name__ == "__main__":
     print(f'{idx} {filevtu} {filevts}')
     print(f"Target date: {target_date} neares date {date_list[nearest_index]}")
     time_delta = target_date - date_list[nearest_index]
-    ecart = time_delta.total_seconds() / 60
-    print(f'ecart {ecart:.1f}')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='Vr')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='density')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='T')
+    diff = time_delta.total_seconds() / 60
+    print(f'diff {diff:.1f}')
+    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='Vr')
+    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='density')
+    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='T')
+    
 
 """ 
     for idx, file in enumerate(sorted_file[:]):
@@ -398,11 +399,11 @@ if __name__ == "__main__":
         print(f'{idx} {filevtu} {filevts}')
         print(f"Target date: {target_date} neares date {date_list[nearest_index]}")
         time_delta = target_date - date_list[nearest_index]
-        ecart = time_delta.total_seconds() / 60
-        print(f'ecart {ecart:.1f}')
-        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='density')
-        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='Vr')
-        slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, ecart, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='T')
+        diff = time_delta.total_seconds() / 60
+        print(f'diff {diff:.1f}')
+        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='density')
+        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='Vr')
+        slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='T')
 
 
     outputdir = f'image/coupling/'
