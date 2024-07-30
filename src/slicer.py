@@ -1,45 +1,16 @@
 import numpy as np
 import pyvista as pv
-import pandas as pd
 import os
-from bisect import bisect_left
 from itertools import cycle
-import cmocean
 from cmap import Colormap
-import re
 from glob import glob
-from datetime import datetime
 import cv2
-from color import citrus, citrus_low
+from .color import citrus
+from .utils import *
 
-def get_sorted_datetimes(folder_path):
-    file_list = os.listdir(folder_path)
-
-    vts_files = [f for f in file_list if f.endswith('.vts')]
-
-    file_datetime_tuples = []
-    for file_name in vts_files:
-        datetime_str = file_name.split('_')[1].replace('T', ' ').replace('-', ':').split('.')[0]
-        file_datetime = datetime.strptime(datetime_str, '%Y:%m:%d %H:%M:%S')
-        file_datetime_tuples.append((file_datetime, file_name))
-
-    file_datetime_tuples.sort()
-
-    sorted_datetimes = [t[0] for t in file_datetime_tuples]
-    sorted_file = [t[1] for t in file_datetime_tuples]
-
-    return sorted_datetimes, sorted_file
-
-def extract_number(filename):
-    match = re.search(r'data_(\d+)\.vts', filename)
-    if match:
-        return int(match.group(1))
-    return None
-
-def read_dsv_file(file_path):
-    data = pd.read_csv(file_path, delim_whitespace=True)
-    data['date'] = pd.to_datetime(data['date'])
-    return data
+# This defines the position of the vertical/horizontal splitting, in this
+# case 40% of the vertical/horizontal dimension of the window
+pv.global_theme.multi_rendering_splitting_position = 0.40
 
 def create_dictplanet(folder):
     planet_data = {}
@@ -58,7 +29,7 @@ def create_dictplanet(folder):
             planet_data[planet_name] = position_data.set_index('date').to_dict('index')
     return planet_data
 
-def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, angle, save=False, variable='Vr'):
+def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, angle, save=False, variable='Vr', plane_type = 'YZ'):
     mesh = pv.read(filevtu)
     radii = np.sqrt(mesh.points[:, 0] ** 2 + mesh.points[:, 1] ** 2 + mesh.points[:, 2] ** 2)
     mask = radii <= 20.5
@@ -127,6 +98,7 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
         radii_squared = np.sum(mesh.points[:, :2] ** 2, axis=1)
 
         mesh.point_data['rho'] = rho * radii_squared
+
     elif variable=='T':
 
         n = mesh_vts.cell_data['n']
@@ -145,14 +117,16 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
 
 
 
-    slice_vts = mesh_vts.slice(normal='z', origin=(0, 0, 0))
-    slice_vts = slice_vts.smooth(n_iter=50, relaxation_factor=0.01)
+    slice_euphoria_eq = mesh_vts.slice(normal='z', origin=(0, 0, 0))
+    slice_euphoria_mer = mesh_vts.slice(normal='x', origin=(0, 0, 0))
+    # slice_euphoria_eq = slice_euphoria_eq.smooth(n_iter=50, relaxation_factor=0.01) #takes time!
 
-    # Extraire la coupe équatoriale à z = 0
-    plane = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1))
+    # Extract the slice at z = 0
+    # plane = pv.Plane(center=(0, 0, 0), direction=(0, 0, 1))
 
-    # Filtrer le maillage pour ne conserver que les points où z = 0
-    slice_equatorial = mesh.slice(normal='z', origin=(0, 0, 0))
+    # Filter the mesh to keep only the points where z = 0 ( or where y = 0 if plane_type == 'XY' )
+    slice_coconut_eq = mesh.slice(normal='z', origin=(0, 0, 0))
+    slice_coconut_mer = mesh.slice(normal='x', origin=(0, 0, 0))
 
     color_palette = cycle(["blue", "red", "green", "magenta", "purple", "orange", "cyan", "lime", "yellow", "pink"])
     color_dict = {planet: next(color_palette) for planet in planet_positions.keys()}
@@ -160,39 +134,51 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
     plotter = pv.Plotter(off_screen=True)
     plotter.set_background('white')
     plotter.add_mesh(clipped_mesh, scalars='Br', cmap='bwr', show_scalar_bar=False, clim=[-10, 10])
-
     if variable=='Vr':
-        plotter.add_mesh(slice_equatorial, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False,
-                         clim=[300, 800])
+        plotter.add_mesh(slice_coconut_eq, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
     elif variable=='density':
-        plotter.add_mesh(slice_equatorial, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_coconut_eq, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
     elif variable=='T':
-        plotter.add_mesh(slice_equatorial, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_coconut_eq, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False, clim=[vmin, vmax])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False, clim=[vmin, vmax])
 
-        #plotter.add_mesh(slice_equatorial, scalars='rho', cmap=Colormap('matplotlib:nipy_spectral'), show_scalar_bar=False,clim=[vmin, vmax])
+        #plotter.add_mesh(slice_, scalars='rho', cmap=Colormap('matplotlib:nipy_spectral'), show_scalar_bar=False,clim=[vmin, vmax])
 
     else:
         print('not valid variable')
 
-    output_image_path = 'visualization.png'
+    output_image_path = 'output/visualization_xy.png'
     plotter.view_xy()
-    plotter.camera.position = (0, 0, 150)
+    plotter.camera.position = (0, 0, 150) # if plane_type == 'XY' else (150, 0, 0)
 
     plotter.screenshot(output_image_path, transparent_background=True)
+    
+    if plane_type == 'both':
+        plotter.view_yz()
+        plotter.camera.position = (150, 0, 0)
+        plotter.screenshot(output_image_path.replace('_xy.png', '_yz.png'), transparent_background=True)
 
     plotter.close()
 
 
     if save:
-        plotter = pv.Plotter(off_screen=True, window_size=[1920,1080])
+        plotter = pv.Plotter(off_screen=True, window_size=[1920,1080], shape='2|1')
     else:
-        plotter = pv.Plotter(window_size=[1920, 1080])
+        plotter = pv.Plotter(window_size=[1920, 1080], shape='2|1')
+    
+    plotter.subplot(2)
 
     plotter.add_text(f"{target_date.strftime('%Y-%m-%d %H:%M:%S')}\n {diff:.1f}", position='upper_right', color='black',
                      font_size=13)
 
     w_S = 2.6 * 10 ** (-6)
     rayon_solaire_km = 695700
+
     for planet, pos in planet_positions.items():
         r = pos['r[AU]']*215
         AU_to_km = 149597870.7
@@ -225,19 +211,26 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
     plotter.add_mesh(clipped_mesh, scalars='Br', cmap='bwr', show_scalar_bar=False,clim=[-10, 10])
 
     if variable == 'Vr':
-        plotter.add_mesh(slice_equatorial, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False,
-                         clim=[300, 800])
-        plotter.add_mesh(slice_vts, scalars='vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False,
-                         clim=[300, 800])
+        plotter.add_mesh(slice_coconut_eq, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
+        plotter.add_mesh(slice_euphoria_eq, scalars='vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='Vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
+            plotter.add_mesh(slice_euphoria_mer, scalars='vr', cmap=Colormap('tol:nightfall'), show_scalar_bar=False, clim=[300, 800])
         plotter.add_scalar_bar(title='Vr (km/s)', vertical=True, title_font_size=22, label_font_size=18)
 
     elif variable=='density':
-        plotter.add_mesh(slice_equatorial, scalars='rho',cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
-        plotter.add_mesh(slice_vts, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_coconut_eq, scalars='rho',cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_euphoria_eq, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='rho',cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
+            plotter.add_mesh(slice_euphoria_mer, scalars='rho', cmap=citrus, show_scalar_bar=False,clim=[vmin, vmax])
         plotter.add_scalar_bar(title='Density * r²  (Rs² * m-3)', vertical=True, title_font_size=22, label_font_size=18)
     elif variable=='T':
-        plotter.add_mesh(slice_vts, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
-        plotter.add_mesh(slice_equatorial, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_coconut_eq, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
+        plotter.add_mesh(slice_euphoria_eq, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
+        if plane_type == 'both':
+            plotter.add_mesh(slice_coconut_mer, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
+            plotter.add_mesh(slice_euphoria_mer, scalars='T', cmap=Colormap('cmocean:balance'), show_scalar_bar=False,clim=[vmin, vmax])
         plotter.add_scalar_bar(title='Temperature (K)', vertical=True, title_font_size=22, label_font_size=18)
     else:
         print('not valid variable')
@@ -254,7 +247,7 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
     for i in range(r_grid.shape[0]):
         points = np.c_[x_grid[i, :], y_grid[i, :], z_grid[i, :]]
         line = pv.lines_from_points(points)
-        if i == 1:  # Index 1 pour la deuxième ligne
+        if i == 1:  # Index 1 for the second line
             # Add the second line with a different color and try a visual effect for dotted line
             plotter.add_mesh(line, color="black", line_width=1.2)
         else:
@@ -289,8 +282,18 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
 
 
     plane = pv.Plane(center=(-300, -150, 0), direction=(0, 0, 1), i_size=400, j_size=400)
-    texture = pv.read_texture(output_image_path)
-    plotter.add_mesh(plane, texture=texture)
+    texture_xy = pv.read_texture(output_image_path)
+    plotter.subplot(0)
+    plotter.add_mesh(plane, texture=texture_xy, label='XY')
+    plotter.add_text('Equatorial plane', color='grey', font_size=13)
+    plotter.camera.up = (0.0, 1.0, 0.0)
+    if plane_type == 'both':
+        plane = pv.Plane(center=(300, -150, 0), direction=(0, 0, -1), i_size=400, j_size=400)
+        texture_yz = pv.read_texture(output_image_path.replace('xy', 'yz'))
+        plotter.subplot(1)
+        plotter.add_mesh(plane, texture=texture_yz, label='YZ')
+        plotter.add_text('Meridional plane', color='grey', font_size=13)
+        plotter.camera.up = (0.0, 1.0, 0.0)
 
     plotter.camera.up = (0.0, 1.0, 0.0)
     plotter.camera.position = (-38.18563118811632, 0.8302754252406501, 970.1723378487242)
@@ -305,6 +308,7 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
         update_text()
         plotter.render()
 
+    plotter.subplot(2)
     #plotter.track_click_position(on_mouse_click, side="left")
     plotter.add_legend(face='circle', bcolor=None,loc="upper left")
     if save:
@@ -315,19 +319,7 @@ def slice2D(filevtu,filevts, dsvdirectory, target_date, outputdir, idx, diff, an
     else:
         plotter.show()
 
-def find_nearest_date_index(date_list_e, target_date):
-    pos = bisect_left(date_list_e, target_date)
-    if pos == 0:
-        return 0
-    if pos == len(date_list_e):
-        return len(date_list_e) - 1
-    before = date_list_e[pos - 1]
-    after = date_list_e[pos]
 
-    if after - target_date < target_date - before:
-        return pos
-    else:
-        return pos - 1
 
 def movie(outputdir, name):
     image_files = sorted(glob(os.path.join(outputdir, f'pyvista_{name}_*.bmp')))
@@ -355,66 +347,3 @@ def movie(outputdir, name):
 
     # Release the VideoWriter object
     video.release()
-
-
-if __name__ == "__main__":
-
-    w_S =  2.66622373e-6
-    start_date = pd.to_datetime("2019-07-02T12:04:37")
-    interval_hours = 0.402 * 20 * 0.005
-    # date_list = [start_date + pd.to_timedelta(interval_hours * i, unit='h') for i in range(600)]
-    date_list = [start_date + pd.to_timedelta(interval_hours * 0, unit='h'), start_date + pd.to_timedelta(interval_hours * 118, unit='h'), start_date + pd.to_timedelta(interval_hours * 186, unit='h')]
-
-    dsvdirectory='dsv/'
-
-    folder_path='vts/'
-    sorted_datetimes, sorted_file = get_sorted_datetimes(folder_path)
-
-    seconds_since_start = [(date - start_date).total_seconds() for date in sorted_datetimes]
-
-    outputdir = f'image/coupling/'
-
-    idx=0 #50 
-    file=sorted_file[idx]
-    target_date = sorted_datetimes[idx]
-    nearest_index = find_nearest_date_index(date_list, target_date) #???????
-    filevtu = f'vtu_filter/data_{nearest_index}.vtu' #???????
-    filevts = f'vts/{file}'
-    print(f'{idx} {filevtu} {filevts}')
-    print(f"Target date: {target_date} neares date {date_list[nearest_index]}")
-    time_delta = target_date - date_list[nearest_index]
-    diff = time_delta.total_seconds() / 60
-    print(f'diff {diff:.1f}')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='Vr')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='density')
-    slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=False, variable='T')
-    
-
-""" 
-    for idx, file in enumerate(sorted_file[:]):
-        target_date = sorted_datetimes[idx]
-        nearest_index = find_nearest_date_index(date_list, target_date)
-        filevtu = f'vtu_filter/data_{nearest_index}.vtu'
-        filevts = f'vts/{file}'
-        print(f'{idx} {filevtu} {filevts}')
-        print(f"Target date: {target_date} neares date {date_list[nearest_index]}")
-        time_delta = target_date - date_list[nearest_index]
-        diff = time_delta.total_seconds() / 60
-        print(f'diff {diff:.1f}')
-        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='density')
-        #slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='Vr')
-        slice2D(filevtu, filevts, dsvdirectory, target_date, outputdir, idx, diff, angle=180+np.degrees(w_S*seconds_since_start[idx]), save=True, variable='T')
-
-
-    outputdir = f'image/coupling/'
-    name='density'
-    movie(outputdir, name)
-
-    outputdir = f'image/coupling/'
-    name='Vr'
-    movie(outputdir, name)
-
-    outputdir = f'image/coupling/'
-    name='T'
-    movie(outputdir, name)
-    """
